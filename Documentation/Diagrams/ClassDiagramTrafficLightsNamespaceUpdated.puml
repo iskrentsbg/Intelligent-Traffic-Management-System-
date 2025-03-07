@@ -1,0 +1,216 @@
+@startuml
+
+class main {
+}
+
+' message interfaces
+
+package NodeManagement {
+        class NodeDecisionManager {
+        - currentDecisionNode: enum
+
+        + newLocalCarCount()
+        + newExternalCarCount()
+        + sendMessageToNodes(message msg)
+    }
+
+    interface INodeDecisionManager {
+        + newLocalCarCount(int carCount)
+    }
+
+    interface ILocalMessageReceive {
+        + receiveLocalMessage()
+    }
+    
+}
+
+NodeDecisionManager -down-|> INodeDecisionManager
+NodeDecisionManager -down-|> ILocalMessageReceive
+
+package NodeCommunication {
+
+    interface ICommunicationProtocol {
+        - SendProtocolMessage(): int
+    }
+
+    interface IExternalMessageSend {
+        sendExternalMessage(): int
+    }
+
+    interface IProtocolReceive {
+        +messageReceive(): void
+    }
+
+    class ExternalMessageManager {
+        - currentMessage: message
+        - shush: bool
+        - incomingMessageQueue: queue
+        - outgoingMessageQueue: queue
+        - SendProtocolMessage(): int
+        - waitForAcknowledge(): int
+        - 
+    }
+
+    class ESPNow {
+        - OnMessageReceive(): void
+        - processIncomingMessageTask(): void
+        - sendProtocolMessage(): int
+        + messageReceive(): void
+    }
+}
+
+ExternalMessageManager -down-|> IProtocolReceive
+ExternalMessageManager -right-|> IExternalMessageSend
+ESPNow -up-> IProtocolReceive
+ESPNow -up-|> ICommunicationProtocol
+main o-left- NodeDecisionManager: <<initialises>>
+
+NodeDecisionManager -left->IExternalMessageSend: <<send message\n to other nodes>>
+ExternalMessageManager -down-> ICommunicationProtocol: <<send message>>
+ExternalMessageManager -right-> ILocalMessageReceive: <<send message to local node>>
+
+package Lanes {
+
+    enum LaneManagerState {
+        - FLOW
+        - STOPPING
+        - STOPPED
+    }
+
+    enum LaneState {
+        - STOPPED_DETERMINE
+        - STOPPED_EMPTY
+        - STOPPED_CARS_WAITING
+        - FLOW_DETERMINE
+        - FLOW_EMPTY
+        - FLOW_FLOWING
+    }
+
+    class LaneManager {
+        - LaneManagerState currentState:
+        - ILane currentLane:
+        - ILane laneManagerLanes: Vector<>
+        - ButtonSensor laneManagerButtons: Vector<>
+        - activePins: Vector<int>
+        - currentLaneNum: int
+        - currentDelta: int
+        - currentTime: long
+        - stoppingBool: bool
+        + handler(): void
+        + Flow(): void
+        + StopFlow(): void
+    }
+
+    interface ILane {
+        + toggleState(Lanes::LaneState State): void
+    }
+
+    class Lane {
+        - CarCount: int
+        - currentstate: LaneState
+        - trafficLightManager: ITrafficLightManager
+        - stateChangeFlag: bool
+        - currentTime: long
+
+        + toggleFlowState(): void
+        + newCarCount(int count): int
+        + newCarCountDelta(int delta): void
+        + handleState(): void
+    }
+
+    interface ILaneCount {
+        + int newCarCount(int count)
+        + int newCarCountDelta(int delta)
+    }
+
+
+    interface IFlowable {
+        + handler()
+        + StopFlow()
+        + Flow()
+    }
+
+    class ButtonSensor {
+        - delta: int
+        - button_pin: int
+        - once: bool
+        - debouceTime: long
+        - prevBtnTime: long
+        - *lane: ILaneCount
+        + detectButtonPress(int prevDelta): int
+        + edit(NewLane): void
+    }
+
+    LaneManager *-right- LaneManagerState
+    Lane *-right- LaneState
+    ButtonSensor -left-> ILaneCount: <<notifies>>
+    ILaneCount <|-down- Lane
+
+}
+
+Lane -down-|> ILane
+LaneManager o-up-> ILane
+main o-up- LaneManager: <<initalises>>
+LaneManager -left-|> IFlowable
+
+LaneManager -left-> INodeDecisionManager: <<notifies>>
+NodeDecisionManager -right-> IFlowable
+Lane -left-> IFlowable
+
+package TrafficLights {
+
+    interface ITrafficLightManager {
+        + registerNewCarLaneTrafficLight(pinGreen: int, pinOrange: int, pinRed: int): void
+        + turnGreen(): void
+        + turnOrange(): void
+        + turnRed(): void
+        + updateAllCarLaneTrafficLights(): void
+    }
+
+    class TrafficLightManager {
+        - uniqie_ptr<ITrafficLight> trafficLights: Vector<>
+        - currentState: CarLaneTrafficLightState
+        + TrafficLightManager()
+        + registerNewCarLaneTrafficLight(pinGreen: int, pinOrange: int, pinRed: int): void
+        + turnGreen(): void
+        + turnOrange(): void
+        + turnRed(): void
+        + updateAllCarLaneTrafficLights(): void
+        - createNewCarTrafficLight(pinGreen: int, pinOrange: int, pinRed: int): uniqie_ptr<ITrafficLight>
+        - changeState(newState: CarLaneTrafficLightState): void
+    }
+
+    interface ITrafficLight {
+        + turnGreen(): void
+        + turnOrange(): void
+        + turnRed(): void
+    }
+
+    class CarLaneTrafficLight {
+        - pinGreenLight: int
+        - pinOrangeLight: int
+        - pinRedLight: int
+        + CarLaneTrafficLight(pinRed: int, pinOrange: int, pinGreen: int)
+        + turnGreen(): void
+        + turnOrange(): void
+        + turnRed(): void
+    }
+
+    enum CarLaneTrafficLightState {
+        - GREEN
+        - ORANGE
+        - RED
+    }
+
+}
+
+
+TrafficLightManager *-left- CarLaneTrafficLightState: <<uses states>>
+
+main o-down- ITrafficLightManager: <<initialises>>
+Lane "1" -down-> "*" ITrafficLightManager: <<notifies>>
+ITrafficLightManager -down-> TrafficLightManager
+TrafficLightManager -down-> ITrafficLight
+
+CarLaneTrafficLight -up-|> ITrafficLight
+@enduml

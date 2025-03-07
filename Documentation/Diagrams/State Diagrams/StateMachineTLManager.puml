@@ -1,0 +1,18 @@
+@startuml
+
+State NormalOperation {
+State Green: ensureTrafficLight(GREEN)
+State Orange: ensureTrafficLight(ORANGE)
+State Red: ensureTrafficLight(RED)
+
+[*] -> Red
+Green ->Orange
+Orange -> Red
+Red -up-> Green
+
+}
+
+State Idle
+Idle -> Idle: elapsed / toggleLight(ORANGE)
+
+@enduml

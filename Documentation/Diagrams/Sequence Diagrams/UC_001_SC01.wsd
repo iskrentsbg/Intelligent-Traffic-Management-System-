@@ -1,0 +1,62 @@
+@startuml UC_001_SC01
+
+title UC_001, Scenario 1: A single car arrives and gets through
+
+'--------------------
+' Functions
+'--------------------
+
+' TODO this can be done in a while loop for all the additional arguments as well!
+' Send a message from node 1 to node 2, and return a message
+!procedure $NodeMsg(n1, n2, message, processmsg, processmsg2, back)
+n1 -> n2: SendNodeMessage(message)
+activate n2
+n2 -> n2: DetermineExternalMessage(message)
+n2 -> n2: processmsg
+n2 -> n2: processmsg2
+return back
+note right of n2: This is asynchronous
+n2 ->> n2: determineNextFlowState()
+deactivate n2
+!endprocedure
+
+' Send a given message to all nodes.
+!procedure $Ripple(msg, processmsg, processmsg2, StartNode, n2, n3, n4)
+$NodeMsg(StartNode, n2, msg, processmsg, processmsg2, Acknowledge)
+$NodeMsg(StartNode, n3, msg, processmsg, processmsg2, Acknowledge)
+$NodeMsg(StartNode, n4, msg, processmsg, processmsg2, Acknowledge)
+!endprocedure
+
+'--------------------
+' Define participants
+'--------------------
+participant North
+participant East
+participant South
+participant West
+
+'-------------------
+' Start of procedure
+'--------------------
+
+'1. The traffic node at North detects a car
+note right of North: A car arrives at north
+activate North
+North -> North: updateLocalCarCnt(1)
+
+'2. Due to the external message sending, North will "ripple out"
+$Ripple("CarUpdate, 1", "updateLocalCarCnt(1)", "sendLocalMessage(newCarCnt)", North, East, South, West)
+
+'3. Now, because the North node has detected that it's next, it will request
+North -> North: DetermineNextFlowState()
+
+'4. The node has determined that it's going to be next
+' $Ripple()
+
+
+'-----------------
+' End of procedure
+'-----------------
+
+
+@enduml

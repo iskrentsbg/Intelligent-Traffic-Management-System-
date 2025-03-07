@@ -1,0 +1,199 @@
+@startuml communication_state_machine
+
+title Main Node Communication State Machine
+
+'----------------
+'  General States
+'----------------
+state start <<start>>
+state Idle
+state ToExternalDecisionMaking <<fork>>
+
+'----------------
+'  General state transitions
+'----------------
+'1. Starting point, start at idle
+  start --> Idle
+
+'2. Receiving a local message, go to the local message handling substatemachine
+  Idle --> LocalDecisionMaking: receivedLocalMessage(msg) / determineLocalMsg(msg)
+
+'3. Receiving an external message; for all directions, go to the external decision making substatemachine,
+'   The external message handling has priority
+LocalDecisionMaking -up-> ToExternalDecisionMaking
+Idle -up-> ToExternalDecisionMaking
+ToExternalDecisionMaking -up-> ExternalDecisionMaking: ReceivedExternalMsg(msg) /\n determineExternalMsg(msg)
+
+'4. Receiving a contract message; go to the contract substatemachine where the message will be handled
+Idle -right-> ContractDecisionMaking: receivedContractMessage(msg) / determineContractMsg(msg)
+
+' The local decision making main state, where the node will receive a local message to process
+State LocalDecisionMaking {
+'----------------
+'   States:
+'----------------
+'   Main States:
+    State NewLocalCarCount: awaitNodesAcknowledgement(Nodes, CarCountUpdate)\nupdateLocalCarCount(n)
+    State RequestToBeNext: awaitNodesAcknowledgement(Nodes, NextRequest)
+    State RequestStartLaneFlow: awaitNodesAcknowledgement(Nodes, StartLaneFlowRequest)
+    State StopLaneFlow: TODO
+    State LaneFlowStopped: TODO
+
+'   End states:
+    state end1 <<end>>
+    state end2 <<end>>
+
+'----------------
+'   Choices:
+'----------------
+
+    state DetermineLocalMessageType <<choice>>
+    state CarCountUpdated <<choice>>
+    state NextDetermined <<choice>>
+    state CurrentLaneFlowChoice <<choice>>
+
+    [*] --> DetermineLocalMessageType
+
+'---------------------
+'   Inner transitions:
+'---------------------
+'   1. A new local message has been received from any other program functionality, like other state machines
+    DetermineLocalMessageType --> NewLocalCarCount: msg == newLocalCnt /\n sendNodeMessage(newCnt, n)
+    DetermineLocalMessageType --> StopLaneFlow: msg == StopLaneFlow
+    DetermineLocalMessageType --> LaneFlowStopped: msg == StoppedLaneFlow
+    DetermineLocalMessageType --> CarCountUpdated: msg == newCarCnt /\n DetermineNextFlowState
+
+'   2. Whenever the nodes have acknowledged the local car count update, determine whether the node will be the next
+    NewLocalCarCount --> CarCountUpdated: MessagesAcknowledged() /\n DetermineNextFlowState()
+'   3. Transitions from the car decision choice, where it has been determined whether this node is indeed the next, 
+    CarCountUpdated --> RequestToBeNext: next == thisNode / sendNodeMessage(requestNext)
+    CarCountUpdated -left-> end1: next != thisNode
+'   4. Whenever the nodes have acknowledged the request to be next, take that decision to request to be next now, or do
+'      do nothing because there is still traffic flowing somewhere else
+    RequestToBeNext --> NextDetermined
+    NextDetermined --> RequestStartLaneFlow: current == empty && ack == true /\n sendNodeMessage(RequestStartLaneFlow, lane)
+    NextDetermined -left-> end2: current != empty
+
+'   5. Check whether the request of the lane flow is accepted by the other nodes.
+    RequestStartLaneFlow --> CurrentLaneFlowChoice
+
+'   6. When the lane 
+}
+
+' The external decision state, where the node receives an external message and acts accordingly
+State ExternalDecisionMaking {
+
+'----------------
+'   States:
+'----------------
+    state OtherNodeCarUpdate: sendNodeMessage(node, acknowledge)\nupdateLocalCarCount(n)
+    state OtherNodeNextRequest: sendNodeMessage(node, acknowledge)
+    state OtherNodeStartFlowRequest: sendNodeMessage(node, acknowledge)
+    state OtherNodeStartsFlow: sendNodeMessage(node, acknowledge)
+    state OtherNodeStopFlow: sendNodeMessage(node, acknowledge)
+    state OtherNodeStoppedFlow: sendNodeMessage(node, acknowledge)
+
+'----------------
+'   Choices:
+'----------------
+    state DetermineMessageType <<choice>>
+
+    state DetermineOtherNodeCarUpdate <<choice>>
+    state DetermineOtherNodeNextRequest <<choice>>
+    state DetermineOtherNodeStartFlowRequest <<choice>>
+    state DetermineOtherNodeStartsFlow <<choice>>
+    state DetermineOtherNodeStopFlow <<choice>>
+    state DetermineOtherNodeStoppedFlow <<choice>>
+
+    state OtherNodeCarUpdateFork <<fork>>
+    state OtherNodeNextRequestFork <<fork>>
+    state OtherNodeStartFlowRequestFork <<fork>>
+    state OtherNodeStartsFlowFork <<fork>>
+    state OtherNodeStopFlowFork <<fork>>
+    state OtherNodeStoppedFlowFork <<fork>>
+'---------------------
+'   Inner transitions:
+'---------------------
+'   0. Starting transition, where a new message has been received:
+    [*] --> DetermineMessageType
+
+'   1. Whenever a message has been processed correctly, the type will be determined:
+    DetermineMessageType --> OtherNodeCarUpdate: msgType == CarUpdate
+    DetermineMessageType --> OtherNodeNextRequest: msgType == nextReq
+    DetermineMessageType --> OtherNodeStartFlowRequest: msgType == SFReq
+    DetermineMessageType --> OtherNodeStartsFlow: msgType == StartsFlow
+    DetermineMessageType --> OtherNodeStopFlow: msgtype == StopFlow
+    DetermineMessageType --> OtherNodeStoppedFlow: msgType == StoppedFlow
+
+'   2. From the other node car update, after the acknowledgement/deny, send local message to check whether the next has changed
+    OtherNodeCarUpdate --> DetermineOtherNodeCarUpdate
+    DetermineOtherNodeCarUpdate --> OtherNodeCarUpdateFork: ack == true /\n sendLocalMsg(newCarCnt, cnt) 
+    DetermineOtherNodeCarUpdate --> OtherNodeCarUpdateFork: ack == false/\n sendErrorMsg(...)
+
+'   3. From the other next request, after the acknowledgement/deny, nothing needs to be done.
+    OtherNodeNextRequest --> DetermineOtherNodeNextRequest
+    DetermineOtherNodeNextRequest --> OtherNodeNextRequestFork: ack == true
+    DetermineOtherNodeNextRequest --> OtherNodeNextRequestFork: ack == false /\n sendErrorMsg(...)
+
+'   4. From the Other node start flow request, after the ack/deny, nothing needs to be done.
+    OtherNodeStartFlowRequest --> DetermineOtherNodeStartFlowRequest
+    DetermineOtherNodeStartFlowRequest --> OtherNodeStartFlowRequestFork: ack == true
+    DetermineOtherNodeStartFlowRequest --> OtherNodeStartFlowRequestFork: ack == false / sendErrorMsg(...)
+
+'   5. From the Other node start flow notification, check contractual stuff
+    OtherNodeStartsFlow --> DetermineOtherNodeStartsFlow
+    DetermineOtherNodeStartsFlow --> OtherNodeStartsFlowFork: ack == true /\n sendContractMsg(...)
+    DetermineOtherNodeStartsFlow --> OtherNodeStartsFlowFork: ack == false /\n sendErrorMsg(...)
+
+'   6. From the other node stop flow, check contractual stuff
+    OtherNodeStopFlow --> DetermineOtherNodeStopFlow
+    DetermineOtherNodeStopFlow --> OtherNodeStopFlowFork: ack == true /\n sendContractMsg(...)
+    DetermineOtherNodeStopFlow --> OtherNodeStopFlowFork: ack == false /\n sendErrorMsg(...)
+
+'   7. From the other node stopped flow, check whether this node has a lane that is next to flow
+    OtherNodeStoppedFlow --> DetermineOtherNodeStoppedFlow
+    DetermineOtherNodeStoppedFlow --> OtherNodeStoppedFlowFork: ack == true
+    DetermineOtherNodeStoppedFlow --> OtherNodeStoppedFlowFork: ack == false // sendErrorMsg(...)
+
+'   8. All message ending forks will go to the substatemachine endpoint.
+    OtherNodeCarUpdateFork --> [*]
+    OtherNodeNextRequestFork --> [*]
+    OtherNodeStartFlowRequestFork --> [*]
+    OtherNodeStartsFlowFork --> [*]
+    OtherNodeStopFlowFork --> [*]
+    OtherNodeStoppedFlowFork --> [*]
+}
+
+state ContractDecisionMaking {
+
+'----------------
+'   States:
+'----------------
+state RequestContract
+state EndContract
+state ContractTimeout
+state ContractRequested: TODO when another node asks
+
+
+'----------------
+'   Choices:
+'----------------
+state DetermineContractDecision <<choice>>
+
+'---------------------
+'   Inner transitions:
+'---------------------
+'   1. Start point to the contract message decision.
+    [*] --> DetermineContractDecision
+    DetermineContractDecision --> RequestContract: msg == request\n awaitNodeAcknowledgement(ContractNode,\n NextRequest)
+    DetermineContractDecision --> EndContract: msg == end\n awaitNodeAcknowledgement(ContractNode,\n NextRequest)
+    DetermineContractDecision --> ContractTimeout
+    
+
+'   2. At the beginning, a new contract message will have been received, and the message type is determined
+
+
+
+}
+
+@enduml

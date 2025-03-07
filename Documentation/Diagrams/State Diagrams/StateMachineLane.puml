@@ -1,0 +1,36 @@
+@startuml
+
+State Stopped {
+    State StoppedStart: determineStoppedState()
+    State Empty
+    State CarsWaiting: notifyMgrCarCount(newCarCount)
+
+    [*] -up-> StoppedStart
+
+    Empty -right-> CarsWaiting: newCarCount() /\n notifyMgrCarCount(newCarCount)
+    CarsWaiting -up-> CarsWaiting: newCarCount()
+
+    StoppedStart -up-> Empty: CarCount == 0
+    StoppedStart -up-> CarsWaiting: CarCount != 0
+}
+
+State AllowedToFlow {
+
+    State FlowStart: determineNextFlowState()
+
+    [*] -> FlowStart
+
+    State FlowEmpty
+    State Flow
+
+    FlowStart -down-> FlowEmpty: CarCount == 0
+    FlowStart -right-> Flow: CarCount != 0
+    Flow -> Flow: newCarCount() /\n notifyMgrCarCount()
+    Flow -down-> FlowEmpty: CarCount == 0
+}
+
+Stopped -right-> AllowedToFlow: toggleState(ALLOWED_TO_FLOW)
+AllowedToFlow -left-> Stopped: toggleState(STOPPED)
+
+
+@enduml
